@@ -1,7 +1,7 @@
 import { config as dotenvConfig } from 'dotenv';
 import express from 'express';
 import { EventData } from '@azure/event-hubs';
-import { EventHubManager, EventHubConfig } from './event-hub-client';
+import { eventHubManager, EventHubConfig } from './event-hub-client';
 import { promisify } from 'util';
 const sleep = promisify(setTimeout);
 
@@ -28,7 +28,6 @@ const eventHubConfig: EventHubConfig = {
     fullyQualifiedNamespace: eventHubNamespace
 };
 
-const eventHubManager = new EventHubManager();
 let eventCounter = 0;
 
 let publishInterval: NodeJS.Timeout;
@@ -61,7 +60,19 @@ async function startAutomaticPublishing() {
             };
 
             console.log(`[${getTimestamp()}] Publishing automatic event ${eventCounter}...`);
-            await eventHubManager.publishEvent(event, eventHubConfig);
+            const result = await eventHubManager.publishEvent(event, eventHubConfig);
+            
+            if (!result.success) {
+                if (result.reason === 'MAX_MESSAGES_REACHED') {
+                    console.log(`[${getTimestamp()}] Maximum message limit reached. Stopping automatic publishing.`);
+                    clearInterval(publishInterval);
+                    isPublishing = false;
+                } else {
+                    console.error(`[${getTimestamp()}] Failed to publish event:`, result.error);
+                }
+                return;
+            }
+
             console.log(`[${getTimestamp()}] Successfully published event ${eventCounter}`);
 
             // Simulate stale connection every 5 events
@@ -69,8 +80,9 @@ async function startAutomaticPublishing() {
                 console.log(`[${getTimestamp()}] Simulating stale connection...`);
                 await eventHubManager.close();
                 console.log(`[${getTimestamp()}] Forced client to become stale`);
+                // Add a small delay to ensure the client is fully closed
+                await sleep(1000);
             }
-
         } catch (error) {
             console.error(`[${getTimestamp()}] Error in automatic publishing:`, error);
         }
@@ -266,6 +278,27 @@ app.post('/auto-publish/stop', (req, res) => {
         console.log(`[${getTimestamp()}] Stopped automatic publishing`);
     }
     res.json({ status: 'success', message: 'Automatic publishing stopped' });
+});
+
+app.post('/test-message-limit', async (req: express.Request, res: express.Response) => {
+    console.log(`[${getTimestamp()}] Testing message limit...`);
+    const results = [];
+    
+    // Try to publish more than the limit
+    const maxMessages = parseInt(process.env.MAX_MESSAGES || '30', 10);
+    for (let i = 0; i < maxMessages + 5; i++) {
+        const result = await eventHubManager.publish(
+            eventHubConfig,
+            { message: `Test message ${i}` },
+            {}
+        );
+        results.push({ messageNum: i, published: result });
+    }
+    
+    res.json({
+        status: 'completed',
+        testResults: results
+    });
 });
 
 process.on('SIGTERM', async () => {

@@ -32,6 +32,12 @@ interface HealthCheckResult {
   lastClientCreation: string | null;
 }
 
+interface PublishResult {
+  success: boolean;
+  error?: string;
+  reason?: string;
+}
+
 export class EventHubManager {
   private client: EventHubProducerClient | null = null;
   private readonly credential: DefaultAzureCredential;
@@ -39,9 +45,11 @@ export class EventHubManager {
   private lastClientCreation: Date | null = null;
   private totalEventsPublished: number = 0;
   private isConnected: boolean = false;
+  private readonly maxMessages: number;
 
   constructor() {
     this.credential = new DefaultAzureCredential();
+    this.maxMessages = parseInt(process.env.MAX_MESSAGES || '30', 10);
   }
 
   private async createClient(config: EventHubConfig): Promise<EventHubProducerClient> {
@@ -87,36 +95,54 @@ export class EventHubManager {
     data: any,
     options: PublishOptions = {}
   ): Promise<boolean> {
-    const event: CustomEventData = {
-      body: data,
-      properties: {
-        id: uuidv4(),
-        timestamp: getTimestamp()
-      }
-    };
-
-    if (options.partitionKey) {
-      event.partitionKey = options.partitionKey;
-    }
-
     try {
-      await this.publishEvent(event as EventData, config);
-      return true;
+      if (this.totalEventsPublished >= this.maxMessages) {
+        console.log(`[${getTimestamp()}] Maximum message limit (${this.maxMessages}) reached. Message rejected.`);
+        return false;
+      }
+
+      const event: CustomEventData = {
+        body: data,
+        properties: {
+          id: uuidv4(),
+          timestamp: getTimestamp()
+        }
+      };
+
+      if (options.partitionKey) {
+        event.partitionKey = options.partitionKey;
+      }
+
+      const result = await this.publishEvent(event as EventData, config);
+      return result.success;
     } catch (err) {
       console.error('Error publishing event:', err);
       return false;
     }
   }
 
-  async publishEvent(event: EventData, config: EventHubConfig): Promise<void> {
+  async publishEvent(event: EventData, config: EventHubConfig): Promise<PublishResult> {
     try {
+      if (this.totalEventsPublished >= this.maxMessages) {
+        console.log(`[${getTimestamp()}] Maximum message limit (${this.maxMessages}) reached. Message rejected.`);
+        return {
+          success: false,
+          reason: 'MAX_MESSAGES_REACHED',
+          error: `Maximum message limit (${this.maxMessages}) reached`
+        };
+      }
+
       console.log(`[${getTimestamp()}] Attempting to publish event to ${config.fullyQualifiedNamespace}/${config.name}`);
       const client = await this.getClient(config);
       const batch = await client.createBatch();
       
       if (!batch.tryAdd(event)) {
         console.error(`[${getTimestamp()}] Event too large to fit in a batch`);
-        throw new Error("Event too large to fit in a batch");
+        return {
+          success: false,
+          reason: 'EVENT_TOO_LARGE',
+          error: 'Event too large to fit in a batch'
+        };
       }
 
       console.log(`[${getTimestamp()}] Publishing event batch to Event Hub`);
@@ -126,11 +152,17 @@ export class EventHubManager {
       this.totalEventsPublished++;
       this.isConnected = true;
       this.lastError = null;
+      
+      return { success: true };
     } catch (err) {
       this.isConnected = false;
       this.lastError = err instanceof Error ? err : new Error('Unknown error occurred');
       console.error(`[${getTimestamp()}] Error publishing event:`, err);
-      throw this.lastError;
+      return {
+        success: false,
+        reason: 'PUBLISH_ERROR',
+        error: err instanceof Error ? err.message : 'Unknown error occurred'
+      };
     }
   }
 
@@ -171,8 +203,8 @@ export const eventHubManager = new EventHubManager();
 
 // Export a simplified publish function
 export async function publish(
-  data: any,
   config: EventHubConfig,
+  data: any,
   options: PublishOptions = {}
 ): Promise<boolean> {
   return eventHubManager.publish(config, data, options);

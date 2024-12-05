@@ -17,6 +17,8 @@ spec:
         image: ${IMAGE_NAME}
         imagePullPolicy: Always
         env:
+        - name: MAX_MESSAGES
+          value: "30"
         - name: EVENT_HUB_NAME
           value: ${EVENT_HUB_NAME}
         - name: EVENT_HUB_NAMESPACE
