@@ -81,11 +81,16 @@ export class EventHubManager {
       if (this.client) {
         try {
           await this.client.close();
+          this.client = null;  // Set to null immediately after closing
         } catch (err) {
           console.warn(`[${getTimestamp()}] Error closing stale client:`, err);
+          this.client = null;  // Ensure client is null even if close fails
         }
       }
-      this.client = await this.createClient(config);
+      
+      if (!this.client) {  // Only create if null
+        this.client = await this.createClient(config);
+      }
     }
     return this.client;
   }
@@ -191,9 +196,10 @@ export class EventHubManager {
 
   async close(): Promise<void> {
     if (this.client) {
-      await this.client.close();
-      this.client = null;
+      const client = this.client;  // Store reference
+      this.client = null;  // Clear reference first
       this.isConnected = false;
+      await client.close();  // Close the stored reference
     }
   }
 }

@@ -86,8 +86,9 @@ The new implementation addresses these limitations with several key improvements
    - Health check endpoints for monitoring
    - Easy-to-use test endpoints for verification
 
-4. **Operational Excellence**
+4. **Operational Improvements**
    - Total events published tracking
+   - Max 30 message publishing limit per pod, delete for reset
    - Client creation timestamp tracking
    - Real-time connection status monitoring
    - Detailed health status reporting
