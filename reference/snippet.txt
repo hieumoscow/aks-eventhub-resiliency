@@ -1,0 +1,86 @@
+# Publish to Event Hub
+
+
+```
+import { publish } from "@pph/pph-lib-event-hub";
+
+const publishData = async (Data: data): Promise<void> => {
+  const eventPublished = await publish(data, eventHubConfig, { partitionKey: id });
+  if (!eventPublished) {
+    logger.error("[Event] Error publishing event. " +
+      `Type: ${type}, Database Id: ${dbId}`);
+  }
+};
+```
+
+
+# publish method from "@pph/pph-lib-event-hub";
+
+```
+import { EventHubProducerClient } from "@azure/event-hubs";
+
+const eventHubClient = (eventHubName: string, connectionString: string): EventHubProducerClient => {
+  if (eventHubName in eventHubs) {
+    return eventHubs[eventHubName];
+  }
+
+  try {
+    eventHubs[eventHubName] = new EventHubProducerClient(
+      connectionString,
+      eventHubName,
+    );
+  } catch (err) {
+    logger.error("Failed to start eventhub clients:", err);
+    process.exit(1);
+  }
+  return eventHubs[eventHubName];
+};
+
+export const getEventProducerClient = (eventHubConfig: EventHubConfig): EventHubProducerClient => {
+  return eventHubClient(
+    eventHubConfig.name,
+    eventHubConfig.connectionString,
+  );
+};
+
+
+export const publish = async <T>(
+  event: T, config: EventHubConfig, options?: SendBatchOptions): Promise<boolean> => {
+  const client = getEventProducerClient(config);
+  const operationId = getOperationId();
+
+  if (!client) {
+    logger.error(`No client initialized for ${name}, not publishing`);
+    return false;
+  }
+
+  let retriesLeft = 3;
+  const messageId = uuidv4();
+
+  while (retriesLeft > 0) {
+    try {
+      const eventDataBatch = await client.createBatch(options);
+      const eventData: EventData = {
+        body: event,
+        properties: {
+          "message_id": messageId,
+          "operation_id": operationId,
+        },
+      };
+      const addEventBatch = eventDataBatch.tryAdd(eventData);
+      if (!addEventBatch) {
+        return false;
+      }
+
+      await client.sendBatch(eventDataBatch);
+      return true;
+    } catch (e: any) {
+      logger.info(`Error publishing message ID ${messageId}: ${e.message}. Retrying...`);
+      retriesLeft--;
+      await sleep(100);
+    }
+  }
+  logger.error(`Failed to publish Message ID ${messageId}`);
+  return false;
+};
+```

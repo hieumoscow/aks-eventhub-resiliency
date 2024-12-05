@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventhub-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eventhub-test
+  template:
+    metadata:
+      labels:
+        app: eventhub-test
+    spec:
+      containers:
+      - name: eventhub-test
+        image: ${IMAGE_NAME}
+        imagePullPolicy: Always
+        env:
+        - name: EVENT_HUB_NAME
+          value: ${EVENT_HUB_NAME}
+        - name: EVENT_HUB_NAMESPACE
+          value: ${EVENT_HUB_NAMESPACE}
+        - name: AZURE_TENANT_ID
+          value: ${AZURE_TENANT_ID}
+        - name: AZURE_CLIENT_ID
+          value: ${AZURE_CLIENT_ID}
+        ports:
+        - containerPort: 8080
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"

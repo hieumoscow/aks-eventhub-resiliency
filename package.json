@@ -1,0 +1,24 @@
+{
+  "name": "eventhub-client-test",
+  "version": "1.0.0",
+  "description": "Test implementation for Azure Event Hub client",
+  "main": "event-hub-client.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "ts-node test-event-hub.ts"
+  },
+  "dependencies": {
+    "@azure/event-hubs": "^5.12.2",
+    "@azure/identity": "^3.4.2",
+    "@types/express": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.15.11",
+    "@types/uuid": "^9.0.8",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
+  }
+}
